@@ -39,7 +39,8 @@ WantedBy=default.target
 - `--since`: `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM[:SS]` (local time), or `<N>h` / `<N>d`.
   Other values → stderr message, exit 2. Shows only outages, blips, and gaps that overlap
   `[since, now]`.
-- `--db`: as above. Missing file → stderr `no data file: <PATH>`, exit 1. Opened read-only.
+- `--db`: as above. Missing file → stderr `no data file: <PATH>`, exit 1. Opened read-only
+  through `file:<percent-encoded PATH>?mode=ro` (`urllib.parse.quote`).
 - `--csv FILE`: also write the same outage list to FILE (FR-014). Overwrites FILE.
 - Exit 0 on success.
 
@@ -58,6 +59,8 @@ NO DATA   2026-10-06 23:00:00  2026-10-07 07:00:00  8h0m0s
 Outages: 2 | Down time: local 0s, internet 1m0s, dns 0s, github 4m30s | Blips: 3 | No data: 8h0m0s
 ```
 
+- In the report text, non-printable characters in `SAMPLE ERROR` are replaced with `?`. The
+  stored text and the CSV keep the original.
 - No outages → the line `No outages.` replaces the table.
 - No gaps → no `NO DATA` lines.
 - Column widths may grow to fit values. Fields are separated by at least two spaces.

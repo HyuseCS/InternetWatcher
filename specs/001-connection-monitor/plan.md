@@ -30,7 +30,8 @@ with `unittest.mock` fakes. A module-level guard makes real socket use fail.
 
 **Project Type**: CLI tool (two scripts)
 
-**Performance Goals**: report over one week of data in under 10 s (SC-002)
+**Performance Goals**: report over one week of data in under 10 s (SC-002), measured by T023.
+SC-003 and SC-004 are manual checks (quickstart Q5), not automated tests.
 
 **Constraints**: under 1% CPU, under 5 MB data per day (SC-004), round never longer than 12 s
 
@@ -90,9 +91,10 @@ test_report.py    # US2, US3 tests
 ```
 
 **Structure Decision**: flat repo root. `python3 -m unittest` finds `test_*.py` there with no
-package setup. `report.py` imports `open_db`, `save_result` only in its tests (to build data)
-and needs nothing else from `monitor.py`. The two source files share no code, so the US1 lane
-(`monitor.py`) and the US2/US3 lane (`report.py`) can be built in parallel after T003.
+package setup. `report.py` imports `default_db_path` from `monitor.py` (built in T003), and
+`test_report.py` uses `open_db`, `save_result` to build data. Nothing else is shared, so the
+US1/US4 lane (`monitor.py`) and the US2/US3 lane (`report.py`) can be built in parallel after
+T003.
 
 ## Decisions
 
@@ -106,3 +108,14 @@ No open decisions remain.
 ## Complexity Tracking
 
 None.
+
+## Validate
+
+Date: 2026-10-06. Verdict: CONDITIONAL → fixes applied.
+
+| Check | Verdict |
+|---|---|
+| Setup and dependencies | PASS (Py 3.14.7, SQLite 3.53.4, unprivileged ICMP ok, systemd --user 262) |
+| Test coverage | CONCERN → fixed (V1-V5, V8) |
+| Breaking changes | PASS (new project) |
+| Security and privacy | CONCERN → fixed (V6, V7) |

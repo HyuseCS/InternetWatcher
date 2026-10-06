@@ -58,7 +58,8 @@ the expected outages with correct types, times, and lengths.
    shows one "local network" outage from the first failed round to the first success after it.
 2. **Given** the router works but the general internet targets all fail for 2 or more rounds,
    **When** the report runs, **Then** it shows one "internet" outage.
-3. **Given** the general internet works but a GitHub check fails for 2 or more rounds, **When**
+3. **Given** the general internet works and name lookup works but a GitHub check fails for 2 or
+   more rounds, **When**
    the report runs, **Then** it shows one "GitHub" outage.
 4. **Given** the direct-address check works but name lookup fails for 2 or more rounds, **When**
    the report runs, **Then** it shows one "DNS" outage.
@@ -111,8 +112,8 @@ process and confirm it comes back within 1 minute.
   "no data" gap, never as an outage and never as uptime.
 - An outage is still going on when the report runs: it is shown with end "ongoing" and its
   length so far.
-- Several outage types overlap (for example GitHub fails, then the whole internet fails): each
-  type is tracked and reported on its own.
+- Several outage types follow each other (for example GitHub fails, then the whole internet
+  fails): each type is tracked and reported on its own.
 - A check takes longer than the round interval: each check has a time limit shorter than the
   interval, so rounds do not pile up.
 - The computer clock changes: times are saved in UTC so daylight saving changes do not break
@@ -125,7 +126,7 @@ process and confirm it comes back within 1 minute.
 ### Functional Requirements
 
 - **FR-001**: The monitor MUST run one check round every 30 seconds, with the interval
-  changeable at start.
+  changeable at start, minimum 15 seconds.
 - **FR-002**: Each round MUST check these targets: the default router (gateway), name lookup of
   a public host, a direct-address check of a public internet host (1.1.1.1), a general website
   (google.com over HTTPS), github.com over HTTPS, and GitHub's git SSH port (github.com port 22).
@@ -137,7 +138,8 @@ process and confirm it comes back within 1 minute.
   the round in progress.
 - **FR-006**: An error in one check MUST NOT stop other checks in the round or stop the monitor.
 - **FR-007**: A failed check MUST NOT trigger extra retries outside the normal round schedule.
-- **FR-008**: The report MUST classify each round into these states per type:
+- **FR-008**: The report MUST classify each round into these states per type. The general
+  internet checks are the direct-address check and the website check.
   - local network down: the router check fails;
   - internet down: the router works and both general internet checks fail;
   - DNS down: the direct-address check works and name lookup fails;
@@ -173,7 +175,7 @@ process and confirm it comes back within 1 minute.
 
 ### Measurable Outcomes
 
-- **SC-001**: After a 1-minute unplug test, the report shows exactly one "local network" or
+- **SC-001**: After a 90-second unplug test, the report shows exactly one "local network" or
   "internet" outage whose start and end are within one round interval plus 15 seconds (45
   seconds at the default 30-second interval) of the real times.
 - **SC-002**: The owner can answer "when did GitHub fail this week, and for how long?" with one
@@ -194,3 +196,6 @@ process and confirm it comes back within 1 minute.
   operating systems are out of scope.
 - The router address is found from the system's default route at each round, so a network change
   (for example a new Wi-Fi) is followed without a restart.
+- Known limit: with a start time filter, the report reads data from 1 day before the filter
+  start. An outage that began more than 1 day before the filter start shows a later start.
+- SC-003 and SC-004 are checked by hand (quickstart Q5), not by automated tests.

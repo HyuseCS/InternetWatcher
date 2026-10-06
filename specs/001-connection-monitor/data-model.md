@@ -75,6 +75,8 @@ end of data, older: closed as for a gap
 ## No-data gap (derived, FR-011)
 
 Fields: `start` (last round before the gap), `end` (next round, or now for a trailing gap),
-`length`. A gap exists when the time between two rounds, or between the last round and now,
-is greater than 3 × `interval_s` of the earlier round for the trailing case and of the later
-round otherwise.
+`length`.
+
+Gap rule: two saved rounds are a no-data gap when the later round's time minus the earlier
+round's time is greater than 3 × `interval_s` of the later round. After the last saved round,
+the time to now is a no-data gap when it is greater than 3 × `interval_s` of the last round.

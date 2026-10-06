@@ -20,7 +20,7 @@ python3 monitor.py run --db /tmp/it-q2.db
 ```
 
 1. Let it run 2 minutes.
-2. Turn Wi-Fi off (or unplug the cable) for 1 minute. Note the clock times of off and on to
+2. Turn Wi-Fi off (or unplug the cable) for 90 seconds. Note the clock times of off and on to
    the second.
 3. Turn it back on. Wait 1 minute. Press Ctrl+C.
 4. Inspect:
@@ -74,6 +74,7 @@ systemctl --user show internettester.service -p CPUUsageNSec -p ActiveEnterTimes
 ```
 
 Expected: file grows under 5 MB per day. CPU time divided by run time is under 1%.
+SC-003 (7 days with no manual restart) and SC-004 are checked by hand here, not by tests.
 
 Remove: `systemctl --user disable --now internettester.service` and delete
 `~/.config/systemd/user/internettester.service`.

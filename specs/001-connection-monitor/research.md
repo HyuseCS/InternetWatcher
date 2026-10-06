@@ -30,8 +30,9 @@ Each item: Decision, Rationale, Alternatives. Facts marked "verified" were run o
 - Decision: `socket.getaddrinfo("github.com", 443, type=SOCK_STREAM)` through the system resolver.
 - Rationale: measures what apps see. github.com is the host the owner cares about.
 - Ceiling: this machine uses systemd-resolved (`nameserver 127.0.0.53`, verified), which caches.
-  An upstream DNS loss can stay hidden until the cached record expires. TTL of github.com was
-  not measured.
+  An upstream DNS loss can stay hidden until the cached record expires. Accepted by the owner
+  (F7). TTL of github.com as served by the system resolver: not measured yet, T010 measures it
+  and writes the number here.
 - Alternatives: hand-built DNS query to a fixed server (does not measure the system resolver,
   more code).
 
@@ -73,6 +74,7 @@ Each item: Decision, Rationale, Alternatives. Facts marked "verified" were run o
   check. The thread deadline bounds the round. A round never takes longer than 12 s.
 - Alternatives: run checks one after another (worst case 60 s, longer than the interval).
 - Ceiling: a hung `getaddrinfo` thread lives on until the resolver gives up.
+- On Ctrl+C during a resolver hang, exit can be delayed by up to one check timeout (10 s).
 
 ## R9. Lowest interval (CHK005)
 
@@ -112,8 +114,10 @@ Each item: Decision, Rationale, Alternatives. Facts marked "verified" were run o
 
 ## R14. Interval stored per row (FR-011)
 
-- Decision: each row stores the `interval_s` the monitor ran with. The no-data rule uses
-  "gap > 3 × interval_s of the later round".
+- Decision: each row stores the `interval_s` the monitor ran with.
+- Gap rule: two saved rounds are a no-data gap when the later round's time minus the earlier
+  round's time is greater than 3 × `interval_s` of the later round. After the last saved round,
+  the time to now is a no-data gap when it is greater than 3 × `interval_s` of the last round.
 - Rationale: the report needs no `--interval` flag and stays correct if the interval changes.
 
 ## R15. Outage details (CHK006, CHK007, CHK017)
@@ -135,8 +139,9 @@ Each item: Decision, Rationale, Alternatives. Facts marked "verified" were run o
 
 ## R17. Single instance (CHK016)
 
-- Decision: `fcntl.flock(LOCK_EX | LOCK_NB)` on the data file at start. If the lock is taken,
-  print `already running` and exit 1.
+- Decision: open the data file with `os.open(path, os.O_RDWR | os.O_CREAT)` (never mode `"w"`,
+  which would empty it) and take `fcntl.flock(fd, LOCK_EX | LOCK_NB)` at start. If the lock is
+  taken, print `already running: <path>` and exit 1.
 - Rationale: two monitors writing the same file would mix two round streams. SQLite uses
   `fcntl` record locks, which are separate from `flock` on Linux, so there is no conflict.
 

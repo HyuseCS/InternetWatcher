@@ -1,4 +1,5 @@
 import contextlib
+import csv
 import io
 import os
 import re
@@ -444,6 +445,84 @@ class MainTest(TZCase):
     def test_bad_since_returns_2(self):
         code, out, err = self.run_main(["--since", "bad"], utc(2026, 10, 6, 18, 0, 0))
         self.assertEqual(code, 2)
+
+
+class WriteCsvTest(TZCase):
+    def read(self, path):
+        with open(path, newline="", encoding="utf-8") as f:
+            return list(csv.reader(f))
+
+    def test_header_rows_ongoing_and_comma_round_trip(self):
+        closed = outage(
+            "github", utc(2026, 10, 6, 18, 2, 0), utc(2026, 10, 6, 18, 6, 30), 270,
+            ["github_https", "github_ssh"], "TimeoutError: a, b \"c\"",
+        )
+        ongoing = outage(
+            "internet", utc(2026, 10, 6, 19, 10, 0), None, 60, ["direct", "web"], None,
+        )
+        path = os.path.join(self.tmp.name, "out.csv")
+        report.write_csv([closed, ongoing], path, utc(2026, 10, 6, 19, 11, 0))
+        self.assertEqual(
+            self.read(path),
+            [
+                ["type", "start", "end", "length_seconds", "failed_targets", "sample_error"],
+                ["github", "2026-10-06 14:02:00", "2026-10-06 14:06:30", "270",
+                 "github_https github_ssh", "TimeoutError: a, b \"c\""],
+                ["internet", "2026-10-06 15:10:00", "ongoing", "60", "direct web", ""],
+            ],
+        )
+
+    def test_overwrites_existing_file(self):
+        path = os.path.join(self.tmp.name, "out.csv")
+        with open(path, "w") as f:
+            f.write("stale,content\n" * 10)
+        report.write_csv([], path, utc(2026, 10, 6, 19, 11, 0))
+        self.assertEqual(
+            self.read(path),
+            [["type", "start", "end", "length_seconds", "failed_targets", "sample_error"]],
+        )
+
+
+class MainCsvTest(TZCase):
+    def two_outage_db(self):
+        down = {"router": (0, "OSError: down, hard")}
+        net = {"direct": (0, "OSError: net"), "web": (0, "OSError: net")}
+        self.build(
+            [(utc(2026, 10, 6, 18, 2, 0) + timedelta(seconds=30 * i), down) for i in range(3)]
+            + [(utc(2026, 10, 6, 18, 3, 30) + timedelta(seconds=30 * i), {}) for i in range(3)]
+            + [(utc(2026, 10, 6, 18, 5, 0) + timedelta(seconds=30 * i), net) for i in range(3)]
+        )
+        return utc(2026, 10, 6, 18, 6, 30)
+
+    def check(self, since_args, expected_types):
+        now = self.two_outage_db()
+        csv_path = os.path.join(self.tmp.name, "out.csv")
+        code, out, err = self.run_main(
+            ["--db", self.path, *since_args, "--csv", csv_path], now
+        )
+        self.assertEqual(code, 0, err)
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.reader(f))
+        self.assertEqual(rows[0][0], "type")
+        printed = []
+        for line in out.splitlines()[1:]:
+            if not line:
+                break
+            printed.append(line.split()[:3])
+        self.assertEqual([r[0] for r in rows[1:]], expected_types)
+        self.assertEqual(
+            [[r[0], *r[1].split()] for r in rows[1:]], printed
+        )
+        return rows
+
+    def test_csv_matches_printed_report(self):
+        rows = self.check([], ["local", "internet"])
+        self.assertEqual(rows[1][2], "2026-10-06 14:03:30")
+        self.assertEqual(rows[2][2], "ongoing")
+        self.assertEqual(rows[1][5], "OSError: down, hard")
+
+    def test_csv_respects_since(self):
+        self.check(["--since", "2026-10-06T14:04"], ["internet"])
 
 
 if __name__ == "__main__":

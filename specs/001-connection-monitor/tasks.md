@@ -217,7 +217,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
 
 **Independent Test**: quickstart Q4.
 
-- [ ] T017 [US3] Write failing tests in `test_report.py` (FR-014). Same `TZ` =
+- [X] T017 [US3] Write failing tests in `test_report.py` (FR-014). Same `TZ` =
   `America/New_York` setUp/tearDown as T015:
   - `write_csv(outages, path, now)` writes header
     `type,start,end,length_seconds,failed_targets,sample_error` and one row per outage, `end`
@@ -225,7 +225,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
     space-separated targets; a sample error with a comma round-trips through `csv.reader`.
   - `main(["--db", path, "--since", X, "--csv", out])` writes the same outages (same order,
     same count) that the printed report lists for the same `--since`.
-- [ ] T018 [US3] Implement `write_csv` and the `--csv` option in `report.py` so T017 passes.
+- [X] T018 [US3] Implement `write_csv` and the `--csv` option in `report.py` so T017 passes.
 
 ---
 

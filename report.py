@@ -1,4 +1,5 @@
 import argparse
+import csv
 import itertools
 import os
 import re
@@ -155,10 +156,26 @@ def format_report(outages, blips, gaps, now):
     return "\n".join(out) + "\n"
 
 
+def write_csv(outages, path, now):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["type", "start", "end", "length_seconds", "failed_targets", "sample_error"])
+        for o in outages:
+            w.writerow([
+                o["type"],
+                fmt_time(o["start"]),
+                fmt_time(o["end"]) if o["end"] else "ongoing",
+                o["length"],
+                " ".join(o["failed_targets"]),
+                o["sample_error"] or "",
+            ])
+
+
 def main(argv=None, now=None):
     parser = argparse.ArgumentParser(prog="report.py")
     parser.add_argument("--since")
     parser.add_argument("--db", default=str(monitor.default_db_path()))
+    parser.add_argument("--csv")
     args = parser.parse_args(argv)
     now = now or datetime.now(timezone.utc)
     since = None
@@ -182,6 +199,8 @@ def main(argv=None, now=None):
         blips = [b for b in blips if b[1] >= since]
         gaps = [g for g in gaps if g[1] > since]
     sys.stdout.write(format_report(outages, blips, gaps, now))
+    if args.csv:
+        write_csv(outages, args.csv, now)
     return 0
 
 

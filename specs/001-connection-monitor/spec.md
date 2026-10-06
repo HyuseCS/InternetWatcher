@@ -141,7 +141,8 @@ process and confirm it comes back within 1 minute.
   - local network down: the router check fails;
   - internet down: the router works and both general internet checks fail;
   - DNS down: the direct-address check works and name lookup fails;
-  - GitHub down: at least one general internet check works and a GitHub check fails.
+  - GitHub down: at least one general internet check works, the DNS check works, and a GitHub
+    check fails.
 - **FR-009**: An outage of a type MUST be 2 or more rounds in a row in that down state. It starts
   at the first such round and ends at the first round after it where that state is gone.
 - **FR-010**: A single down round between non-down rounds MUST be counted as a blip, not an
@@ -173,7 +174,8 @@ process and confirm it comes back within 1 minute.
 ### Measurable Outcomes
 
 - **SC-001**: After a 1-minute unplug test, the report shows exactly one "local network" or
-  "internet" outage whose start and end are within 30 seconds of the real times.
+  "internet" outage whose start and end are within one round interval plus 15 seconds (45
+  seconds at the default 30-second interval) of the real times.
 - **SC-002**: The owner can answer "when did GitHub fail this week, and for how long?" with one
   command in under 10 seconds.
 - **SC-003**: The monitor runs for 7 days with no manual restart and no gaps except sleep or

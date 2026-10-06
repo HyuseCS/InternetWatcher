@@ -1,4 +1,5 @@
 import contextlib
+import fcntl
 import io
 import os
 import pathlib
@@ -329,6 +330,115 @@ class RunRoundTests(TempDirCase):
             monitor.run_round(self.conn, 30, targets)
         self.assertTrue(err.getvalue().startswith("write failed:"), err.getvalue())
         self.assertEqual([r[2] for r in self._rows()], ["a", "c"])
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 0
+        self.sleeps = []
+
+    def now(self):
+        return self.t
+
+    def sleep(self, d):
+        self.sleeps.append(d)
+        self.t += d
+
+
+class RunForeverTests(unittest.TestCase):
+    def _starts(self, durations, rounds=3):
+        clk = FakeClock()
+        starts = []
+        durs = iter(durations)
+
+        def round_fn(*args):
+            starts.append(clk.now())
+            clk.t += next(durs, 0)
+
+        monitor.run_forever(mock.Mock(), 30, rounds, round_fn, clk.now, clk.sleep)
+        return starts
+
+    def test_fast_rounds_start_at_interval_multiples(self):
+        self.assertEqual(self._starts([]), [0, 30, 60])
+
+    def test_slow_round_is_not_caught_up(self):
+        self.assertEqual(self._starts([45]), [0, 45, 75])
+
+    def test_round_fn_called_exactly_rounds_times(self):
+        self.assertEqual(len(self._starts([], rounds=5)), 5)
+        self.assertEqual(len(self._starts([45], rounds=1)), 1)
+
+
+class ParserTests(unittest.TestCase):
+    def test_interval_below_15_exits_2(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as cm:
+                monitor.build_parser().parse_args(["run", "--interval", "14"])
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_non_integer_interval_exits_2(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as cm:
+                monitor.build_parser().parse_args(["run", "--interval", "abc"])
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_interval_15_accepted_default_30(self):
+        parser = monitor.build_parser()
+        self.assertEqual(parser.parse_args(["run", "--interval", "15"]).interval, 15)
+        self.assertEqual(parser.parse_args(["run"]).interval, 30)
+
+
+class MainRunTests(TempDirCase):
+    def setUp(self):
+        super().setUp()
+        self.path = os.path.join(self.dir, "checks.db")
+
+    def _main(self, side_effect):
+        err = io.StringIO()
+        with mock.patch("monitor.run_forever", side_effect=side_effect) as rf, \
+                contextlib.redirect_stderr(err):
+            code = monitor.main(["run", "--db", self.path])
+        return code, err.getvalue(), rf
+
+    def _count(self):
+        c = sqlite3.connect(self.path)
+        self.addCleanup(c.close)
+        return c.execute("SELECT COUNT(*) FROM checks").fetchone()[0]
+
+    def _save_then_interrupt(self, *a, **k):
+        c = monitor.open_db(self.path)
+        monitor.save_result(c, "2026-10-06T05:41:48+00:00", 30,
+                            ("router", "icmp", 1, 3.5, None))
+        c.close()
+        raise KeyboardInterrupt
+
+    def test_keyboard_interrupt_returns_0(self):
+        code, err, rf = self._main(KeyboardInterrupt)
+        self.assertEqual(code, 0)
+        self.assertTrue(rf.called)
+
+    def test_lock_held_prints_already_running_returns_1(self):
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT)
+        self.addCleanup(os.close, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        code, err, rf = self._main(KeyboardInterrupt)
+        self.assertEqual(code, 1)
+        self.assertIn(f"already running: {self.path}", err)
+        self.assertFalse(rf.called)
+
+    def test_rows_survive_second_start(self):
+        self.assertEqual(self._main(self._save_then_interrupt)[0], 0)
+        self.assertEqual(self._count(), 1)
+        self.assertEqual(self._main(KeyboardInterrupt)[0], 0)
+        self.assertEqual(self._count(), 1)
+
+    def test_rows_survive_second_start_with_lock_taken(self):
+        self.assertEqual(self._main(self._save_then_interrupt)[0], 0)
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT)
+        self.addCleanup(os.close, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.assertEqual(self._main(KeyboardInterrupt)[0], 1)
+        self.assertEqual(self._count(), 1)
 
 
 if __name__ == "__main__":

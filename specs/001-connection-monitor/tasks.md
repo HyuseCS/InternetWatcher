@@ -107,7 +107,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
   `ThreadPoolExecutor(max_workers=len(targets))`, `as_completed(..., timeout=deadline)`, save and
   commit each result as it arrives, save unfinished ones as timeouts, then
   `shutdown(wait=False, cancel_futures=True)` (research R8, R11).
-- [ ] T008 [US1] Write failing schedule and CLI tests in `test_monitor.py`
+- [X] T008 [US1] Write failing schedule and CLI tests in `test_monitor.py`
   (FR-001, FR-007):
   - `run_forever(conn, interval_s, rounds, round_fn, clock, sleep)` with a fake clock and
     interval 30 (rule R10: after each round `next_at = max(next_at + interval, now)`):
@@ -124,7 +124,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
     prints `already running: <path>` to stderr and returns 1.
   - Rows saved before a start (first `main` run) still exist after a second `main` run on the
     same file, both with the lock taken and not taken.
-- [ ] T009 [US1] Implement `run_forever`, `main` with `run` subcommand (argparse, `--interval`
+- [X] T009 [US1] Implement `run_forever`, `main` with `run` subcommand (argparse, `--interval`
   int default 30 min 15, `--db` default `default_db_path()`, built by `build_parser()`), the
   lock guard (open the data file with `os.open(path, os.O_RDWR | os.O_CREAT)`, never mode
   `"w"`, then `fcntl.flock(fd, LOCK_EX | LOCK_NB)`), `KeyboardInterrupt` → return 0, and

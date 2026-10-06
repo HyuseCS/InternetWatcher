@@ -1,3 +1,5 @@
+import argparse
+import fcntl
 import functools
 import http.client
 import os
@@ -144,3 +146,58 @@ def run_round(conn, interval_s, targets, timeout=10, deadline=12):
             save((t, c, 0, None, f"TimeoutError: no result in {timeout}s"))
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
+
+
+def run_forever(conn, interval_s, rounds, round_fn, clock, sleep):
+    next_at = clock()
+    while rounds is None or rounds > 0:
+        delay = next_at - clock()
+        if delay > 0:
+            sleep(delay)
+        round_fn(conn, interval_s)
+        next_at = max(next_at + interval_s, clock())
+        if rounds is not None:
+            rounds -= 1
+
+
+def interval_arg(text):
+    value = int(text)
+    if value < 15:
+        raise argparse.ArgumentTypeError("minimum is 15")
+    return value
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog="monitor.py")
+    sub = parser.add_subparsers(dest="command", required=True)
+    run = sub.add_parser("run")
+    run.add_argument("--interval", type=interval_arg, default=30)
+    run.add_argument("--db", type=pathlib.Path, default=default_db_path())
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    args.db.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(args.db, os.O_RDWR | os.O_CREAT)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(f"already running: {args.db}", file=sys.stderr)
+            return 1
+        conn = open_db(args.db)
+        try:
+            run_forever(conn, args.interval, None,
+                        functools.partial(run_round, targets=TARGETS),
+                        time.monotonic, time.sleep)
+        except KeyboardInterrupt:
+            return 0
+        finally:
+            conn.close()
+    finally:
+        os.close(fd)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

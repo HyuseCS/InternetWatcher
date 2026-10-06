@@ -178,7 +178,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
   - interval 60 rows with 150 s spacing → no gap (150 ≤ 180).
 - [X] T014 [US2] Implement `find_outages` in `report.py` so T013 passes (data-model.md state
   table, research R15).
-- [ ] T015 [US2] Write failing tests in `test_report.py` (FR-012, FR-013). `setUp` sets
+- [X] T015 [US2] Write failing tests in `test_report.py` (FR-012, FR-013). `setUp` sets
   `os.environ["TZ"] = "America/New_York"` and calls `time.tzset()`; `tearDown` restores the old
   value and calls `time.tzset()` again:
   - `load_rounds(conn, since)` on a DB built with `monitor.open_db` + `monitor.save_result`
@@ -201,7 +201,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
   - `main(["--db", missing_path])` prints `no data file: <path>` to stderr, returns 1, and does
     not create the file.
   - `main(["--since", "bad"])` returns 2.
-- [ ] T016 [US2] Implement `load_rounds`, `parse_since`, `format_report`, `main` and
+- [X] T016 [US2] Implement `load_rounds`, `parse_since`, `format_report`, `main` and
   `if __name__ == "__main__": sys.exit(main())` in `report.py` so T015 passes. Open the DB with
   `sqlite3.connect(f"file:{urllib.parse.quote(path)}?mode=ro", uri=True)` after an
   `os.path.exists` check. Default `--db` from `monitor.default_db_path` by import. Non-printable

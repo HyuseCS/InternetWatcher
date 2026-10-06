@@ -1,6 +1,13 @@
+import contextlib
+import io
+import os
+import re
+import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
+import monitor
 import report
 from report import classify
 
@@ -188,6 +195,255 @@ class FindOutagesTest(unittest.TestCase):
         rounds = rounds_at((0, UP), (150, UP), (300, UP), interval=60)
         outages, blips, gaps = report.find_outages(rounds, at(300))
         self.assertEqual((outages, blips, gaps), ([], [], []))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+UTC = timezone.utc
+
+
+def utc(*a):
+    return datetime(*a, tzinfo=UTC)
+
+
+class TZCase(unittest.TestCase):
+    def setUp(self):
+        self.old_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "America/New_York"
+        time.tzset()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, "checks.db")
+
+    def tearDown(self):
+        if self.old_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = self.old_tz
+        time.tzset()
+
+    def save_round(self, conn, at, results, interval=30):
+        for t in ALL:
+            ok, err = results.get(t, OK)
+            monitor.save_result(
+                conn, at.isoformat(timespec="seconds"), interval,
+                (t, "tcp", ok, 5.0 if ok else None, err),
+            )
+
+    def build(self, rounds):
+        conn = monitor.open_db(self.path)
+        for at, results in rounds:
+            self.save_round(conn, at, results)
+        conn.close()
+
+    def run_main(self, argv, now):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = report.main(argv, now=now)
+        return code, out.getvalue(), err.getvalue()
+
+
+class LoadRoundsTest(TZCase):
+    def test_groups_and_sorts_rounds(self):
+        t1, t2 = utc(2026, 10, 6, 18, 0, 0), utc(2026, 10, 6, 18, 0, 30)
+        conn = monitor.open_db(self.path)
+        self.save_round(conn, t2, {"router": (0, "OSError: x")}, interval=15)
+        self.save_round(conn, t1, {})
+        rounds = report.load_rounds(conn, None)
+        self.assertEqual([r[0] for r in rounds], [t1, t2])
+        self.assertEqual(rounds[0][1], 30)
+        self.assertEqual(rounds[1][1], 15)
+        self.assertEqual(set(rounds[0][2]), set(ALL))
+        self.assertEqual(rounds[0][2]["router"], (1, None))
+        self.assertEqual(rounds[1][2]["router"], (0, "OSError: x"))
+        self.assertEqual(rounds[1][2]["dns"], (1, None))
+
+    def test_since_skips_rows_older_than_one_day_before(self):
+        since = utc(2026, 10, 6, 12, 0, 0)
+        old = since - timedelta(days=1, hours=1)
+        kept = since - timedelta(hours=23)
+        after = since + timedelta(hours=1)
+        conn = monitor.open_db(self.path)
+        for at in (old, kept, after):
+            self.save_round(conn, at, {})
+        rounds = report.load_rounds(conn, since)
+        self.assertEqual([r[0] for r in rounds], [kept, after])
+
+
+class ParseSinceTest(TZCase):
+    NOW = utc(2026, 10, 6, 20, 0, 0)
+
+    def test_date_is_local_midnight_as_utc(self):
+        self.assertEqual(report.parse_since("2026-10-05", self.NOW), utc(2026, 10, 5, 4, 0, 0))
+
+    def test_datetime_is_local_time_as_utc(self):
+        self.assertEqual(report.parse_since("2026-10-05T14:02", self.NOW), utc(2026, 10, 5, 18, 2, 0))
+
+    def test_hours(self):
+        self.assertEqual(report.parse_since("6h", self.NOW), utc(2026, 10, 6, 14, 0, 0))
+
+    def test_days(self):
+        self.assertEqual(report.parse_since("7d", self.NOW), utc(2026, 9, 29, 20, 0, 0))
+
+    def test_bad_text_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            report.parse_since("yesterday-ish", self.NOW)
+
+
+def outage(kind, start, end, length, targets, err):
+    return {
+        "type": kind, "start": start, "end": end, "length": length,
+        "failed_targets": targets, "sample_error": err,
+    }
+
+
+class FormatReportTest(TZCase):
+    NOW = utc(2026, 10, 6, 19, 11, 0)
+
+    def sample(self):
+        github = outage(
+            "github", utc(2026, 10, 6, 18, 2, 0), utc(2026, 10, 6, 18, 6, 30), 270,
+            ["github_https", "github_ssh"], "TimeoutError: timed out",
+        )
+        internet = outage(
+            "internet", utc(2026, 10, 6, 19, 10, 0), None, 60,
+            ["direct", "web"], "OSError: [Errno 101] Network is unreachable",
+        )
+        blips = [("dns", utc(2026, 10, 6, 17, 0, 0))] * 3
+        gaps = [(utc(2026, 10, 6, 10, 0, 0), utc(2026, 10, 6, 18, 0, 0))]
+        return [internet, github], blips, gaps
+
+    def lines(self, text):
+        return [l.split() for l in text.splitlines()]
+
+    def test_layout(self):
+        text = report.format_report(*self.sample(), self.NOW)
+        rows = self.lines(text)
+        self.assertEqual(rows[0], ["TYPE", "START", "END", "LENGTH", "FAILED", "TARGETS", "SAMPLE", "ERROR"])
+        self.assertEqual(
+            rows[1],
+            ["github", "2026-10-06", "14:02:00", "2026-10-06", "14:06:30", "4m30s",
+             "github_https", "github_ssh", "TimeoutError:", "timed", "out"],
+        )
+        self.assertEqual(
+            rows[2],
+            ["internet", "2026-10-06", "15:10:00", "ongoing", "1m0s", "direct", "web",
+             "OSError:", "[Errno", "101]", "Network", "is", "unreachable"],
+        )
+        self.assertIn(
+            ["NO", "DATA", "2026-10-06", "06:00:00", "2026-10-06", "14:00:00", "8h0m0s"], rows
+        )
+        self.assertIn(
+            "Outages: 2 | Down time: local 0s, internet 1m0s, dns 0s, github 4m30s"
+            " | Blips: 3 | No data: 8h0m0s",
+            text.splitlines(),
+        )
+
+    def test_length_units(self):
+        o = [
+            outage("local", utc(2026, 10, 6, 15, 0, 0), utc(2026, 10, 6, 16, 0, 5), 3605, ["router"], "E: a"),
+            outage("dns", utc(2026, 10, 6, 17, 0, 0), utc(2026, 10, 6, 17, 0, 45), 45, ["dns"], "E: b"),
+        ]
+        text = report.format_report(o, [], [], self.NOW)
+        self.assertIn("1h0m5s", self.lines(text)[1])
+        self.assertIn("45s", self.lines(text)[2])
+        self.assertIn("Down time: local 1h0m5s, internet 0s, dns 45s, github 0s", text)
+
+    def test_no_outages_no_gaps(self):
+        text = report.format_report([], [], [], self.NOW)
+        self.assertIn("No outages.", text.splitlines())
+        self.assertNotIn("TYPE", text)
+        self.assertNotIn("NO DATA", text)
+        self.assertIn("Outages: 0 | Down time: local 0s, internet 0s, dns 0s, github 0s | Blips: 0 | No data: 0s", text)
+
+    def test_non_printable_sample_error_replaced_input_untouched(self):
+        o = outage("local", utc(2026, 10, 6, 15, 0, 0), utc(2026, 10, 6, 15, 1, 0), 60, ["router"], "bad\x1b[0m\nnext")
+        text = report.format_report([o], [], [], self.NOW)
+        self.assertIn("bad?[0m?next", text)
+        self.assertNotIn("\x1b", text)
+        self.assertEqual(o["sample_error"], "bad\x1b[0m\nnext")
+
+
+class MainTest(TZCase):
+    def test_since_in_future_prints_no_outages(self):
+        self.build([(utc(2026, 10, 6, 18, 0, 0), {})])
+        code, out, err = self.run_main(
+            ["--db", self.path, "--since", "2099-01-01"], utc(2026, 10, 6, 18, 0, 30)
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("No outages.", out.splitlines())
+
+    def local_outage_db(self):
+        down = {"router": (0, "OSError: down")}
+        rounds = [
+            (utc(2026, 10, 6, 18, 2, 0), down),
+            (utc(2026, 10, 6, 18, 2, 30), down),
+            (utc(2026, 10, 6, 18, 3, 0), down),
+            (utc(2026, 10, 6, 18, 3, 30), {}),
+            (utc(2026, 10, 6, 18, 4, 0), {}),
+            (utc(2026, 10, 6, 18, 4, 30), {}),
+        ]
+        self.build(rounds)
+        return utc(2026, 10, 6, 18, 5, 0)
+
+    def test_outage_overlapping_since_is_shown(self):
+        now = self.local_outage_db()
+        code, out, err = self.run_main(["--db", self.path, "--since", "2026-10-06T14:03"], now)
+        self.assertEqual(code, 0)
+        self.assertNotIn("No outages.", out)
+        self.assertEqual(out.splitlines()[1].split()[:3], ["local", "2026-10-06", "14:02:00"])
+
+    def test_outage_ended_before_since_is_not_shown(self):
+        now = self.local_outage_db()
+        code, out, err = self.run_main(["--db", self.path, "--since", "2026-10-06T14:04"], now)
+        self.assertEqual(code, 0)
+        self.assertIn("No outages.", out.splitlines())
+
+    def blip_gap_db(self):
+        down = {"router": (0, "OSError: down")}
+        self.build([
+            (utc(2026, 10, 6, 17, 0, 0), down),
+            (utc(2026, 10, 6, 17, 0, 30), {}),
+            (utc(2026, 10, 6, 18, 0, 0), {}),
+            (utc(2026, 10, 6, 18, 0, 30), down),
+            (utc(2026, 10, 6, 18, 1, 0), {}),
+            (utc(2026, 10, 6, 18, 1, 30), {}),
+        ])
+        return utc(2026, 10, 6, 18, 2, 0)
+
+    def blips(self, out):
+        return int(re.search(r"Blips: (\d+)", out).group(1))
+
+    def test_since_before_everything_counts_all(self):
+        now = self.blip_gap_db()
+        code, out, err = self.run_main(["--db", self.path, "--since", "2026-10-06T12:00"], now)
+        self.assertEqual(self.blips(out), 2)
+        self.assertIn("NO DATA", out)
+
+    def test_gap_starting_before_since_and_ending_after_is_shown_old_blip_dropped(self):
+        now = self.blip_gap_db()
+        code, out, err = self.run_main(["--db", self.path, "--since", "2026-10-06T13:30"], now)
+        self.assertEqual(self.blips(out), 1)
+        self.assertIn("NO DATA", out)
+
+    def test_gap_ended_before_since_and_older_blips_dropped(self):
+        now = self.blip_gap_db()
+        code, out, err = self.run_main(["--db", self.path, "--since", "2026-10-06T14:00:45"], now)
+        self.assertEqual(self.blips(out), 0)
+        self.assertNotIn("NO DATA", out)
+
+    def test_missing_db(self):
+        missing = os.path.join(self.tmp.name, "nope.db")
+        code, out, err = self.run_main(["--db", missing], utc(2026, 10, 6, 18, 0, 0))
+        self.assertEqual(code, 1)
+        self.assertIn("no data file: " + missing, err)
+        self.assertFalse(os.path.exists(missing))
+
+    def test_bad_since_returns_2(self):
+        code, out, err = self.run_main(["--since", "bad"], utc(2026, 10, 6, 18, 0, 0))
+        self.assertEqual(code, 2)
 
 
 if __name__ == "__main__":

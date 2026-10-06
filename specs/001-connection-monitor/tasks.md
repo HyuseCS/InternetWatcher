@@ -157,7 +157,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
 - [X] T012 [US2] Implement `classify` in `report.py` so T011 passes. The github rule is
   `(direct ok or web ok) and dns ok and (github_https failed or github_ssh failed)`, where "ok" and
   "failed" both require the target to be present in `results`.
-- [ ] T013 [US2] Write failing tests in `test_report.py` for
+- [X] T013 [US2] Write failing tests in `test_report.py` for
   `find_outages(rounds, now)` → `(outages, blips, gaps)` (FR-009, FR-010, FR-011, edge cases).
   `rounds` is a time-sorted list of `(round_at_utc_datetime, interval_s, results)`. Outage =
   dict with `type, start, end (None if ongoing), length, failed_targets, sample_error`.
@@ -176,7 +176,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
   - github down rounds 1-2, then internet down rounds 3-5, then ok → two outages back to back:
     `github` ends at round 3, `internet` starts at round 3, sorted by start.
   - interval 60 rows with 150 s spacing → no gap (150 ≤ 180).
-- [ ] T014 [US2] Implement `find_outages` in `report.py` so T013 passes (data-model.md state
+- [X] T014 [US2] Implement `find_outages` in `report.py` so T013 passes (data-model.md state
   table, research R15).
 - [ ] T015 [US2] Write failing tests in `test_report.py` (FR-012, FR-013). `setUp` sets
   `os.environ["TZ"] = "America/New_York"` and calls `time.tzset()`; `tearDown` restores the old

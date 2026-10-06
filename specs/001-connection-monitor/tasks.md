@@ -62,7 +62,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
 
 ### Tests first, then build
 
-- [ ] T004 [US1] Write failing check tests in `test_monitor.py` (FR-002, FR-004, FR-016). Use
+- [X] T004 [US1] Write failing check tests in `test_monitor.py` (FR-002, FR-004, FR-016). Use
   `unittest.mock.patch` fakes only:
   - `default_gateway(route_path)` on a temp file holding a `/proc/net/route` sample with a
     `00000000` destination and gateway `0100D20A` returns `"10.210.0.1"`; on a sample with no
@@ -86,7 +86,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
   - `TARGETS` holds exactly these `(target, check_type)` pairs in this order:
     `router icmp`, `dns dns`, `direct tcp`, `web https` (google.com), `github_https https`
     (github.com), `github_ssh ssh` (github.com:22). No other host is contacted (FR-016).
-- [ ] T005 [US1] Implement `default_gateway`, `check_router` (unprivileged ICMP
+- [X] T005 [US1] Implement `default_gateway`, `check_router` (unprivileged ICMP
   `SOCK_DGRAM, IPPROTO_ICMP`, echo request type 8, wait for a reply), `check_dns`,
   `check_direct`, `check_https`, `check_ssh`, `run_check`, and `TARGETS` in `monitor.py`
   (research R1-R7) so T004 passes.

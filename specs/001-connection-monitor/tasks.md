@@ -145,7 +145,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
 
 **Independent Test**: quickstart Q3, and T013 fixtures.
 
-- [ ] T011 [US2] Write failing tests in `test_report.py` for `classify(results)` (FR-008).
+- [X] T011 [US2] Write failing tests in `test_report.py` for `classify(results)` (FR-008).
   `results` maps target → `(ok, error)`; missing targets are unknown. One case per row of the
   "Down states per round" table in data-model.md, plus:
   - all six fail → `{"local"}` only (router failed, so internet is not down).
@@ -154,7 +154,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
     only, not `github` (FR-008, plan D1).
   - router ok, direct ok, web ok, dns ok, github_ssh fail → `{"github"}`.
   - empty dict (crash mid-round) → `set()`.
-- [ ] T012 [US2] Implement `classify` in `report.py` so T011 passes. The github rule is
+- [X] T012 [US2] Implement `classify` in `report.py` so T011 passes. The github rule is
   `(direct ok or web ok) and dns ok and (github_https failed or github_ssh failed)`, where "ok" and
   "failed" both require the target to be present in `results`.
 - [ ] T013 [US2] Write failing tests in `test_report.py` for

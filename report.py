@@ -39,6 +39,8 @@ TARGETS = {
 
 
 def find_outages(rounds, now):
+    if rounds and len(rounds[-1][2]) < len(monitor.TARGETS) and (now - rounds[-1][0]).total_seconds() < 12:
+        rounds = rounds[:-1]
     outages, blips, gaps = [], [], []
     runs = {}
 
@@ -156,7 +158,7 @@ def format_report(outages, blips, gaps, now):
     return "\n".join(out) + "\n"
 
 
-def write_csv(outages, path, now):
+def write_csv(outages, path):
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["type", "start", "end", "length_seconds", "failed_targets", "sample_error"])
@@ -182,7 +184,8 @@ def main(argv=None, now=None):
     if args.since:
         try:
             since = parse_since(args.since, now)
-        except ValueError as e:
+            since - timedelta(days=1)
+        except (ValueError, OverflowError) as e:
             print(e, file=sys.stderr)
             return 2
     if not os.path.exists(args.db):
@@ -191,6 +194,9 @@ def main(argv=None, now=None):
     conn = sqlite3.connect(f"file:{urllib.parse.quote(args.db)}?mode=ro", uri=True)
     try:
         rounds = load_rounds(conn, since)
+    except sqlite3.Error as e:
+        print(f"cannot read {args.db}: {e}", file=sys.stderr)
+        return 1
     finally:
         conn.close()
     outages, blips, gaps = find_outages(rounds, now)
@@ -200,7 +206,11 @@ def main(argv=None, now=None):
         gaps = [g for g in gaps if g[1] > since]
     sys.stdout.write(format_report(outages, blips, gaps, now))
     if args.csv:
-        write_csv(outages, args.csv, now)
+        try:
+            write_csv(outages, args.csv)
+        except OSError as e:
+            print(f"cannot write {args.csv}: {e}", file=sys.stderr)
+            return 1
     return 0
 
 

@@ -3,9 +3,11 @@ import csv
 import io
 import os
 import re
+import sqlite3
 import tempfile
 import time
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 
 import monitor
@@ -197,9 +199,19 @@ class FindOutagesTest(unittest.TestCase):
         outages, blips, gaps = report.find_outages(rounds, at(300))
         self.assertEqual((outages, blips, gaps), ([], [], []))
 
+    def partial_round_rounds(self):
+        down = rnd(direct=BAD, web=BAD, github_https=BAD, github_ssh=BAD)
+        return rounds_at((0, down), (30, down), (60, {"router": OK, "dns": OK}))
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_partial_last_round_in_progress_is_ignored(self):
+        outages, blips, gaps = report.find_outages(self.partial_round_rounds(), at(65))
+        self.assertEqual([o["type"] for o in outages], ["internet"])
+        self.assertIsNone(outages[0]["end"])
+
+    def test_partial_last_round_long_ago_is_kept(self):
+        outages, blips, gaps = report.find_outages(self.partial_round_rounds(), at(120))
+        self.assertEqual([o["type"] for o in outages], ["internet"])
+        self.assertEqual(outages[0]["end"], at(60))
 
 
 UTC = timezone.utc
@@ -446,6 +458,39 @@ class MainTest(TZCase):
         code, out, err = self.run_main(["--since", "bad"], utc(2026, 10, 6, 18, 0, 0))
         self.assertEqual(code, 2)
 
+    def test_since_overflow_returns_2(self):
+        os.environ["TZ"] = "Europe/Berlin"
+        time.tzset()
+        self.build([(utc(2026, 10, 6, 18, 0, 0), {})])
+        for since in ("1000000000d", "0001-01-02"):
+            with self.subTest(since=since):
+                code, out, err = self.run_main(["--db", self.path, "--since", since], utc(2026, 10, 6, 18, 0, 30))
+                self.assertEqual(code, 2)
+                self.assertTrue(err.strip())
+
+    def test_db_opened_read_only(self):
+        self.build([(utc(2026, 10, 6, 18, 0, 0), {})])
+        with mock.patch("report.sqlite3.connect", wraps=sqlite3.connect) as connect:
+            code, out, err = self.run_main(["--db", self.path], utc(2026, 10, 6, 18, 0, 30))
+        self.assertEqual(code, 0)
+        args, kwargs = connect.call_args
+        self.assertTrue(args[0].endswith("?mode=ro"))
+        self.assertIs(kwargs.get("uri"), True)
+
+    def test_db_without_checks_table_returns_1(self):
+        open(self.path, "w").close()
+        code, out, err = self.run_main(["--db", self.path], utc(2026, 10, 6, 18, 0, 0))
+        self.assertEqual(code, 1)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+        self.assertNotIn("Traceback", err)
+
+    def test_unwritable_csv_returns_1(self):
+        self.build([(utc(2026, 10, 6, 18, 0, 0), {})])
+        csv_path = os.path.join(self.tmp.name, "missing-dir", "out.csv")
+        code, out, err = self.run_main(["--db", self.path, "--csv", csv_path], utc(2026, 10, 6, 18, 0, 30))
+        self.assertEqual(code, 1)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+
 
 class WriteCsvTest(TZCase):
     def read(self, path):
@@ -461,7 +506,7 @@ class WriteCsvTest(TZCase):
             "internet", utc(2026, 10, 6, 19, 10, 0), None, 60, ["direct", "web"], None,
         )
         path = os.path.join(self.tmp.name, "out.csv")
-        report.write_csv([closed, ongoing], path, utc(2026, 10, 6, 19, 11, 0))
+        report.write_csv([closed, ongoing], path)
         self.assertEqual(
             self.read(path),
             [
@@ -476,7 +521,7 @@ class WriteCsvTest(TZCase):
         path = os.path.join(self.tmp.name, "out.csv")
         with open(path, "w") as f:
             f.write("stale,content\n" * 10)
-        report.write_csv([], path, utc(2026, 10, 6, 19, 11, 0))
+        report.write_csv([], path)
         self.assertEqual(
             self.read(path),
             [["type", "start", "end", "length_seconds", "failed_targets", "sample_error"]],

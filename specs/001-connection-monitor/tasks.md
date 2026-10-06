@@ -90,7 +90,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
   `SOCK_DGRAM, IPPROTO_ICMP`, echo request type 8, wait for a reply), `check_dns`,
   `check_direct`, `check_https`, `check_ssh`, `run_check`, and `TARGETS` in `monitor.py`
   (research R1-R7) so T004 passes.
-- [ ] T006 [US1] Write failing round tests in `test_monitor.py` (FR-003, FR-004, FR-005, FR-006).
+- [X] T006 [US1] Write failing round tests in `test_monitor.py` (FR-003, FR-004, FR-005, FR-006).
   Use fake target lists, not `TARGETS`:
   - `run_round(conn, interval_s, targets, timeout=10, deadline=12)` saves one row per target,
     all with the same `round_at` (UTC, `isoformat(timespec="seconds")`, ends with `+00:00`) and
@@ -103,7 +103,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
   - Each row is committed before `run_round` returns (read back with a second connection).
   - A `save_result` that raises `sqlite3.OperationalError` for one row: the error is written to
     stderr starting with `write failed:`, the other rows are saved, nothing is raised.
-- [ ] T007 [US1] Implement `run_round` in `monitor.py` so T006 passes: one
+- [X] T007 [US1] Implement `run_round` in `monitor.py` so T006 passes: one
   `ThreadPoolExecutor(max_workers=len(targets))`, `as_completed(..., timeout=deadline)`, save and
   commit each result as it arrives, save unfinished ones as timeouts, then
   `shutdown(wait=False, cancel_futures=True)` (research R8, R11).

@@ -4,7 +4,11 @@ import os
 import pathlib
 import socket
 import sqlite3
+import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout
+from datetime import datetime, timezone
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS checks (
@@ -116,3 +120,27 @@ TARGETS = [
     ("github_https", "https", functools.partial(check_https, "github.com")),
     ("github_ssh", "ssh", check_ssh),
 ]
+
+
+def run_round(conn, interval_s, targets, timeout=10, deadline=12):
+    round_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    def save(result):
+        try:
+            save_result(conn, round_at, interval_s, result)
+        except sqlite3.Error as e:
+            print(f"write failed: {e}", file=sys.stderr)
+
+    pool = ThreadPoolExecutor(max_workers=len(targets))
+    try:
+        pending = {pool.submit(run_check, t, c, fn, timeout): (t, c) for t, c, fn in targets}
+        try:
+            for f in as_completed(list(pending), timeout=deadline):
+                del pending[f]
+                save(f.result())
+        except FuturesTimeout:
+            pass
+        for t, c in pending.values():
+            save((t, c, 0, None, f"TimeoutError: no result in {timeout}s"))
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)

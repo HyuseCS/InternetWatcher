@@ -1,10 +1,15 @@
+import contextlib
+import io
 import os
 import pathlib
 import re
 import socket
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
+from datetime import datetime, timezone
 from unittest import mock
 
 import monitor
@@ -248,6 +253,82 @@ class TargetsTests(unittest.TestCase):
             [(t[0], t[1]) for t in monitor.TARGETS],
             [("router", "icmp"), ("dns", "dns"), ("direct", "tcp"),
              ("web", "https"), ("github_https", "https"), ("github_ssh", "ssh")])
+
+
+class RunRoundTests(TempDirCase):
+    def setUp(self):
+        super().setUp()
+        self.conn = monitor.open_db(self.path)
+        self.addCleanup(self.conn.close)
+
+    def _rows(self):
+        other = sqlite3.connect(self.path)
+        self.addCleanup(other.close)
+        return other.execute(
+            "SELECT round_at, interval_s, target, check_type, ok, latency_ms, error "
+            "FROM checks ORDER BY target").fetchall()
+
+    def test_one_row_per_target_same_round_at(self):
+        targets = [("a", "tcp", lambda t: None), ("b", "dns", lambda t: None),
+                   ("c", "https", lambda t: None)]
+        monitor.run_round(self.conn, 45, targets)
+        rows = self._rows()
+        self.assertEqual([(r[2], r[3], r[4]) for r in rows],
+                         [("a", "tcp", 1), ("b", "dns", 1), ("c", "https", 1)])
+        self.assertEqual(len({r[0] for r in rows}), 1)
+        self.assertEqual({r[1] for r in rows}, {45})
+        round_at = rows[0][0]
+        self.assertRegex(round_at, r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$")
+        parsed = datetime.fromisoformat(round_at)
+        self.assertLess(abs((datetime.now(timezone.utc) - parsed).total_seconds()), 30)
+
+    def test_raising_check_saved_as_failure_others_saved(self):
+        def boom(t):
+            raise ValueError("boom")
+        targets = [("a", "tcp", lambda t: None), ("b", "dns", boom),
+                   ("c", "https", lambda t: None)]
+        monitor.run_round(self.conn, 30, targets)
+        rows = {r[2]: r for r in self._rows()}
+        self.assertEqual(set(rows), {"a", "b", "c"})
+        self.assertEqual((rows["b"][4], rows["b"][5], rows["b"][6]),
+                         (0, None, "ValueError: boom"))
+        self.assertEqual((rows["a"][4], rows["c"][4]), (1, 1))
+
+    def test_blocking_check_times_out_at_deadline(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        targets = [("a", "tcp", lambda t: None),
+                   ("b", "dns", lambda t: release.wait(30)),
+                   ("c", "https", lambda t: None)]
+        start = time.monotonic()
+        monitor.run_round(self.conn, 30, targets, timeout=10, deadline=0.2)
+        self.assertLess(time.monotonic() - start, 1)
+        rows = {r[2]: r for r in self._rows()}
+        self.assertEqual(set(rows), {"a", "b", "c"})
+        self.assertEqual((rows["b"][4], rows["b"][5], rows["b"][6]),
+                         (0, None, "TimeoutError: no result in 10s"))
+        self.assertEqual((rows["a"][4], rows["c"][4]), (1, 1))
+
+    def test_rows_committed_before_return(self):
+        monitor.run_round(self.conn, 30, [("a", "tcp", lambda t: None)])
+        self.assertEqual(len(self._rows()), 1)
+
+    def test_write_failure_goes_to_stderr_others_saved(self):
+        real = monitor.save_result
+
+        def flaky(conn, round_at, interval_s, result):
+            if result[0] == "b":
+                raise sqlite3.OperationalError("disk full")
+            return real(conn, round_at, interval_s, result)
+
+        targets = [("a", "tcp", lambda t: None), ("b", "dns", lambda t: None),
+                   ("c", "https", lambda t: None)]
+        err = io.StringIO()
+        with mock.patch("monitor.save_result", side_effect=flaky), \
+                contextlib.redirect_stderr(err):
+            monitor.run_round(self.conn, 30, targets)
+        self.assertTrue(err.getvalue().startswith("write failed:"), err.getvalue())
+        self.assertEqual([r[2] for r in self._rows()], ["a", "c"])
 
 
 if __name__ == "__main__":

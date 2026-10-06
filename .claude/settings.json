@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "stratum@stratum": true,
+    "ponytail@ponytail": false
+  }
+}

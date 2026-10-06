@@ -257,12 +257,13 @@ relative to it. Run tests with `python3 -m unittest -v`.
   that calls `monitor.check_direct(1)` under the guard, run it, and confirm it fails with
   `RuntimeError: real network in test`. Remove the temporary test. Then run
   `python3 -m unittest -v` (all pass) and quickstart Q3, Q4. Record output.
-- [ ] T023 SC-002 timing (measurement, no test pair): in a heredoc script, create
+- [X] T023 SC-002 timing (measurement, no test pair): in a heredoc script, create
   `/tmp/it-week.db` with `monitor.open_db` and insert one week of fake rows ending now
   (6 targets × 2880 rounds/day × 7 days ≈ 121k rows, interval 30, mix of ok and failed rows)
   with `executemany` and one commit. Then run
   `time python3 report.py --db /tmp/it-week.db --since 7d`. Must finish in under 10 s.
   Record the time in the task notes. Delete `/tmp/it-week.db`. No repo file is added.
+  - Result 2026-10-06: 120,960 rows (1 week), `report.py --since 7d` took 0.81 s. DB size 11.6 MB per week (about 1.7 MB per day).
 
 ---
 

@@ -30,7 +30,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
 
 ## Phase 2: Foundational (blocks all stories)
 
-- [ ] T002 Write failing tests in `test_monitor.py` (FR-004, FR-005, FR-016, FR-017):
+- [X] T002 Write failing tests in `test_monitor.py` (FR-004, FR-005, FR-016, FR-017):
   - `setUpModule` patches `socket.socket.connect`, `socket.socket.sendto`,
     `socket.create_connection`, and `socket.getaddrinfo` to raise
     `RuntimeError("real network in test")`; `tearDownModule` stops the patches.
@@ -46,7 +46,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
     set, else `~/.local/share/internettester/checks.db`.
   - Source scan: neither `monitor.py` nor `report.py` matches `\bDROP\s+TABLE\b` or
     `\bDELETE\s+FROM\b` (`re.IGNORECASE`) (FR-017).
-- [ ] T003 Implement `default_db_path`, `open_db`, `save_result` in `monitor.py` so T002 passes.
+- [X] T003 Implement `default_db_path`, `open_db`, `save_result` in `monitor.py` so T002 passes.
   Schema verbatim from data-model.md. `open_db` does `mkdir(parents=True, exist_ok=True)` on the
   parent folder. Create an empty `report.py` so the source scan can read it.
 

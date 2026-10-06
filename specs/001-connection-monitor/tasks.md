@@ -24,7 +24,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
 
 ## Phase 1: Setup
 
-- [ ] T001 Add the line `__pycache__/` to `.gitignore`.
+- [X] T001 Add the line `__pycache__/` to `.gitignore`.
 
 ---
 

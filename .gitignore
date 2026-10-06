@@ -2,3 +2,4 @@
 .stratum/weather.json
 .stratum/powerline.json
 graphify-out/
+__pycache__/

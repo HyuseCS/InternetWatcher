@@ -6,6 +6,7 @@ import os
 import pathlib
 import socket
 import sqlite3
+import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -170,14 +171,42 @@ def interval_arg(text):
 def build_parser():
     parser = argparse.ArgumentParser(prog="monitor.py")
     sub = parser.add_subparsers(dest="command", required=True)
-    run = sub.add_parser("run")
-    run.add_argument("--interval", type=interval_arg, default=30)
-    run.add_argument("--db", type=pathlib.Path, default=default_db_path())
+    for name in ("run", "install"):
+        cmd = sub.add_parser(name)
+        cmd.add_argument("--interval", type=interval_arg, default=30)
+        cmd.add_argument("--db", type=pathlib.Path, default=default_db_path())
     return parser
+
+
+def unit_text(python, script, interval, db):
+    return (
+        "[Unit]\n"
+        "Description=InternetTester connection monitor\n"
+        "\n"
+        "[Service]\n"
+        f'ExecStart="{python}" "{script}" run --interval {interval} --db "{db}"\n'
+        "Restart=always\n"
+        "RestartSec=10\n"
+        "\n"
+        "[Install]\n"
+        "WantedBy=default.target\n"
+    )
+
+
+def install(interval, db):
+    unit = pathlib.Path.home() / ".config" / "systemd" / "user" / "internettester.service"
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text(unit_text(sys.executable, os.path.abspath(__file__), interval, os.path.abspath(db)))
+    print(unit)
+    codes = [subprocess.run(["systemctl", "--user", *a]).returncode
+             for a in (["daemon-reload"], ["enable", "--now", "internettester.service"])]
+    return next((c for c in codes if c), 0)
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    if args.command == "install":
+        return install(args.interval, args.db)
     args.db.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(args.db, os.O_RDWR | os.O_CREAT)
     try:

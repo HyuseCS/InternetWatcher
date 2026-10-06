@@ -235,7 +235,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
 
 **Independent Test**: quickstart Q5.
 
-- [ ] T019 [US4] Write failing tests in `test_monitor.py` (FR-015):
+- [X] T019 [US4] Write failing tests in `test_monitor.py` (FR-015):
   - `unit_text(python, script, interval, db)` equals the unit in contracts/cli.md with the
     given values: `ExecStart` quoted absolute paths, `Restart=always`, `RestartSec=10`,
     `WantedBy=default.target`.
@@ -244,7 +244,7 @@ relative to it. Run tests with `python3 -m unittest -v`.
     `["systemctl", "--user", "daemon-reload"]` then
     `["systemctl", "--user", "enable", "--now", "internettester.service"]`, returns 0; returns
     the non-zero code when a call fails.
-- [ ] T020 [US4] Implement `unit_text` and the `install` subcommand in `monitor.py` so T019
+- [X] T020 [US4] Implement `unit_text` and the `install` subcommand in `monitor.py` so T019
   passes (research R18). Use `sys.executable` and `os.path.abspath(__file__)`.
 - [ ] T021 [US4] Live check: run quickstart Q5 (install, kill, restart within 1 minute, login
   start). Record results in the task notes. Not a code change.

@@ -5,6 +5,7 @@ import os
 import pathlib
 import re
 import socket
+import sys
 import sqlite3
 import tempfile
 import threading
@@ -439,6 +440,64 @@ class MainRunTests(TempDirCase):
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.assertEqual(self._main(KeyboardInterrupt)[0], 1)
         self.assertEqual(self._count(), 1)
+
+
+class UnitTextTests(unittest.TestCase):
+    def test_unit_matches_contract(self):
+        got = monitor.unit_text("/usr/bin/python3", "/opt/m/monitor.py", 45, "/data/checks.db")
+        self.assertEqual(got, (
+            "[Unit]\n"
+            "Description=InternetTester connection monitor\n"
+            "\n"
+            "[Service]\n"
+            'ExecStart="/usr/bin/python3" "/opt/m/monitor.py" run --interval 45 --db "/data/checks.db"\n'
+            "Restart=always\n"
+            "RestartSec=10\n"
+            "\n"
+            "[Install]\n"
+            "WantedBy=default.target\n"
+        ))
+
+
+class InstallTests(unittest.TestCase):
+    def setUp(self):
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        self.home = td.name
+        self.db = os.path.join(td.name, "checks.db")
+        env = mock.patch.dict(os.environ, {"HOME": td.name})
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("XDG_CONFIG_HOME", None)
+        self.unit = os.path.join(td.name, ".config", "systemd", "user", "internettester.service")
+
+    def _install(self, codes):
+        results = [mock.Mock(returncode=c) for c in codes]
+        with mock.patch("subprocess.run", side_effect=results) as run, \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            code = monitor.main(["install", "--db", self.db])
+        return code, run, out.getvalue()
+
+    def test_writes_unit_and_runs_systemctl_in_order(self):
+        code, run, out = self._install([0, 0])
+        self.assertEqual(code, 0)
+        self.assertEqual(open(self.unit).read(), monitor.unit_text(
+            sys.executable, os.path.abspath(monitor.__file__), 30, self.db))
+        self.assertEqual([c.args[0] for c in run.call_args_list], [
+            ["systemctl", "--user", "daemon-reload"],
+            ["systemctl", "--user", "enable", "--now", "internettester.service"],
+        ])
+        self.assertIn(self.unit, out)
+
+    def test_enable_failure_returns_its_code(self):
+        code, run, _ = self._install([0, 5])
+        self.assertEqual(code, 5)
+        self.assertEqual(run.call_count, 2)
+
+    def test_daemon_reload_failure_returns_its_code(self):
+        code, run, _ = self._install([3, 0])
+        self.assertEqual(code, 3)
+        self.assertTrue(os.path.exists(self.unit))
 
 
 if __name__ == "__main__":

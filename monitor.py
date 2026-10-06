@@ -62,7 +62,7 @@ def default_gateway(route_path="/proc/net/route"):
         next(f)
         for line in f:
             fields = line.split()
-            if len(fields) > 2 and fields[1] == "00000000":
+            if len(fields) > 7 and fields[1] == "00000000" and fields[7] == "00000000" and int(fields[2], 16):
                 return socket.inet_ntoa(int(fields[2], 16).to_bytes(4, "little"))
     return None
 
@@ -208,7 +208,7 @@ def main(argv=None):
     if args.command == "install":
         return install(args.interval, args.db)
     args.db.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(args.db, os.O_RDWR | os.O_CREAT)
+    fd = os.open(args.db, os.O_RDWR | os.O_CREAT, 0o600)
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)

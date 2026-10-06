@@ -142,6 +142,17 @@ class DefaultGatewayTests(TempDirCase):
             "wlan0\t0000D20A\t00000000\t0001\t0\t0\t600\t0000FFFF\t0\t0\t0\n")
         self.assertIsNone(monitor.default_gateway(path))
 
+    def test_split_route_mask_skipped(self):
+        path = self._route(
+            "tun0\t00000000\t0200000A\t0003\t0\t0\t0\t00000080\t0\t0\t0\n"
+            "wlan0\t00000000\t0100D20A\t0003\t0\t0\t600\t00000000\t0\t0\t0\n")
+        self.assertEqual(monitor.default_gateway(path), "10.210.0.1")
+
+    def test_on_link_default_route_is_none(self):
+        path = self._route(
+            "ppp0\t00000000\t00000000\t0001\t0\t0\t0\t00000000\t0\t0\t0\n")
+        self.assertIsNone(monitor.default_gateway(path))
+
 
 def fake_sock(**attrs):
     s = mock.MagicMock()
@@ -440,6 +451,12 @@ class MainRunTests(TempDirCase):
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.assertEqual(self._main(KeyboardInterrupt)[0], 1)
         self.assertEqual(self._count(), 1)
+
+    def test_new_db_file_mode_0600(self):
+        old = os.umask(0o022)
+        self.addCleanup(os.umask, old)
+        self.assertEqual(self._main(KeyboardInterrupt)[0], 0)
+        self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
 
 
 class UnitTextTests(unittest.TestCase):
